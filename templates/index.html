@@ -1,0 +1,1332 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Image Editor</title>
+  <style>
+    /* Base styles */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        Helvetica, Arial, sans-serif;
+    }
+
+    /* Grid Layout - fix the sidebar positioning */
+    body {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      /* Fixed width sidebar */
+      grid-template-rows: 100vh;
+      grid-template-areas: "sidebar main";
+      background-color: #f8f9fa;
+      gap: 0;
+      overflow: hidden;
+      height: 100vh;
+      /* Explicitly set gap to 0 to ensure no space */
+    }
+
+    /* Sidebar - match the exact style from the image */
+    .sidebar {
+      grid-area: sidebar;
+      background: #fff;
+      border-right: 1px solid #e0e0e0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      height: 100vh;
+      max-width: 220px;
+      z-index: 10;
+    }
+
+    /* Tab styling for exact match */
+    .tab-header {
+      display: flex;
+      border-bottom: 1px solid #e0e0e0;
+      background-color: #fff;
+    }
+
+    .tab-button {
+      flex: 1;
+      padding: 10px 0;
+      text-align: center;
+      font-size: 14px;
+      color: #606060;
+      background: none;
+      border: none;
+      cursor: pointer;
+      transition: all 0.1s;
+      position: relative;
+    }
+
+    .tab-button.active {
+      color: #4285f4;
+      font-weight: 500;
+    }
+
+    .tab-button.active::after {
+      content: "";
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 3px;
+      background-color: #4285f4;
+    }
+
+    /* Layer items styling to match screenshot */
+    .layer-item {
+      padding: 12px;
+      display: flex;
+      align-items: center;
+      background: #f5f5f5;
+      justify-content: space-between;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      border-bottom: 1px solid #f0f0f0;
+      position: relative;
+      user-select: none;
+    }
+
+    .layer-item:hover {
+      background: rgb(231, 235, 236);
+    }
+
+    .layer-item.active {
+      background: #e8f0fe;
+      border-left: 3px solid #4285f4;
+    }
+
+    .layer-item.dragging {
+      opacity: 0.5;
+      transform: rotate(5deg);
+      z-index: 1000;
+    }
+
+    .layer-item.drag-over {
+      border-top: 2px solid #4285f4;
+    }
+
+    .layer-content {
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .layer-icon {
+      width: 20px;
+      height: 20px;
+      margin-right: 8px;
+      border-radius: 3px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+
+    .layer-name {
+      flex: 1;
+      font-size: 13px;
+      color: #333;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .layer-controls {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .layer-item:hover .layer-controls {
+      opacity: 1;
+    }
+
+    .layer-visibility,
+    .layer-lock,
+    .remove-layer {
+      width: 20px;
+      height: 20px;
+      border: none;
+      background: none;
+      cursor: pointer;
+      border-radius: 3px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      color: #666;
+      transition: all 0.2s;
+    }
+
+    .layer-visibility:hover,
+    .layer-lock:hover,
+    .remove-layer:hover {
+      color: #333;
+    }
+
+    .layer-visibility.hidden {
+      color: #ccc;
+    }
+
+    .layer-lock.locked {
+      color: #f44336;
+    }
+
+    .drag-handle {
+      width: 16px;
+      height: 16px;
+      cursor: grab;
+      color: #999;
+      margin-bottom: 4px;
+    }
+
+    .drag-handle:active {
+      cursor: grabbing;
+    }
+
+    /* Drop zone indicator */
+    .drop-indicator {
+      height: 2px;
+      background: #4285f4;
+      margin: 0;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .drop-indicator.active {
+      opacity: 1;
+    }
+
+    /* Fix main content area to match pixel-perfect with image */
+    .main-content {
+      grid-area: main;
+      display: grid;
+      grid-template-rows: auto auto auto 1fr auto;
+      /* Changed to make canvas row take available space */
+      grid-template-areas:
+        "topbar"
+        "toolbar1"
+        "toolbar2"
+        "canvas"
+        "footer";
+      height: 100vh;
+      max-height: 100vh;
+    }
+
+    .top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 5px 15px;
+    }
+
+    input[type="text"].title-input {
+      border-radius: 5px;
+      padding: 3px 5px;
+      border: 1px solid #ccc;
+      max-width: 300px;
+    }
+
+    .border-input {
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      padding: 4px;
+      margin: 0 10px;
+    }
+
+    .title-input::placeholder {
+      padding: 0 5px;
+    }
+
+    .frame-size {
+      color: #666;
+    }
+
+    /* Title bar matches the image */
+    .title-input {
+      flex-grow: 1;
+      border: none;
+      font-size: 16px;
+      padding: 6px 0;
+      outline: none;
+    }
+
+    .frame-size {
+      display: flex;
+      align-items: center;
+      margin-right: 20px;
+    }
+
+    .frame-size label {
+      margin-right: 8px;
+      font-size: 14px;
+      color: #666;
+    }
+
+    .frame-size-input {
+      width: 50px;
+      padding: 4px 8px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      text-align: center;
+      font-size: 14px;
+    }
+
+    .action-buttons {
+      display: flex;
+      gap: 8px;
+    }
+
+    .action-button {
+      padding: 0px 5px;
+      background-color: rgb(89 155 233 / 40%);
+      border: 1px solid #ddd;
+      color: #0f5eb3;
+      border-radius: 4px;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .action-button:hover {
+      background-color: rgb(89 155 233 / 60%);
+    }
+
+    /* Toolbar */
+    .toolbar {
+      display: flex;
+      padding: 6px 12px;
+      border-bottom: 1px solid #e0e0e0;
+      background-color: #fff;
+      align-items: center;
+    }
+
+    .toolbar-group {
+      display: flex;
+      gap: 3px;
+      align-items: center;
+      padding: 0 8px;
+      border-right: 1px solid #e0e0e0;
+    }
+
+    .toolbar-group:last-child {
+      border-right: none;
+    }
+
+    .tool-button {
+      background: transparent;
+      border: 1px solid transparent;
+      padding: 6px;
+      cursor: pointer;
+      border-radius: 4px;
+      font-size: 14px;
+      min-width: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 300;
+    }
+
+    .tool-button:hover {
+      background-color: #f0f0f0;
+      border-color: #ddd;
+    }
+
+    .tool-button.active {
+      background-color: #e6f2ff;
+      border-color: rgba(153, 194, 255, 0.64);
+    }
+
+    .dropdown {
+      position: relative;
+    }
+
+    .dropdown select {
+      padding: 4px 24px 4px 8px;
+      border: none;
+      outline: none;
+      border-radius: 4px;
+      background-color: #fff;
+      font-size: 14px;
+      cursor: pointer;
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M6 9l4-4H2l4 4z' fill='%23555'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 8px center;
+    }
+
+    .dropdown selectoption {
+      border-radius: 4px;
+    }
+
+    /* CRITICAL FIX: Canvas Area - Fix Fabric.js layering issues */
+    .canvas-container {
+      background-color: #f0f0f0;
+      width: 100%;
+      height: 100%;
+      padding: 10px;
+      /* Add padding for better spacing */
+      min-height: 400px;
+      /* Add minimum height */
+      grid-area: canvas;
+      box-sizing: border-box;
+      position: relative;
+      overflow: auto;
+      scrollbar-width: thin;
+      scrollbar-color: #888 #f0f0f0;
+    }
+
+    /* Custom scrollbar for webkit browsers */
+    .canvas-container::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    .canvas-container::-webkit-scrollbar-track {
+      background: #f0f0f0;
+    }
+
+    .canvas-container::-webkit-scrollbar-thumb {
+      background: #888;
+      border-radius: 4px;
+    }
+
+    .canvas-container::-webkit-scrollbar-thumb:hover {
+      background: #555;
+    }
+
+    /* FIXED: Ensure proper stacking of Fabric.js canvases */
+    .canvas-container canvas {
+      position: absolute !important;
+      width: 100%;
+      height: 100%;
+      left: 50%;
+      top: 50%;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1) !important;
+    }
+
+    /* FIXED: Make sure upper canvas is on top */
+    .canvas-container .upper-canvas {
+      z-index: 2 !important;
+      pointer-events: auto !important;
+    }
+
+    /* FIXED: Lower canvas should be behind */
+    .canvas-container .lower-canvas {
+      z-index: 1 !important;
+    }
+
+    /* Ensure canvas wrapper is properly sized and centered */
+    .canvas-wrapper {
+      display: block;
+      position: relative;
+      margin: 0;
+      /* Remove auto margin */
+    }
+
+    /* FIXED: Fabric.js container positioning */
+    .fabric-container {
+      position: relative !important;
+      margin: 0 !important;
+      /* Remove auto margin */
+      display: inline-block !important;
+    }
+
+    /* Footer */
+    .footer {
+      display: flex;
+      justify-content: end;
+      align-items: flex-end;
+      padding: 8px 16px;
+      border-top: 1px solid #e0e0e0;
+      background-color: #f0f0f0;
+    }
+
+    .background-toggle {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      color: #666;
+    }
+
+    .action-buttons-footer {
+      display: flex;
+      gap: 8px;
+    }
+
+    /* Add these styles for the export controls */
+    .export-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .export-controls .dropdown select {
+      min-width: 80px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 4px 8px;
+      background-color: #fff;
+      font-size: 14px;
+    }
+
+    .download-button {
+      background-color: rgb(7 199 0);
+      border: solid 1px rgb(175 223 192);
+      border-radius: 4px;
+      padding: 5px 8px;
+      color: #fff;
+    }
+
+    .download-button:hover{
+       background-color: rgb(85, 221, 80);
+    }
+
+    #export-format {
+      background-color: rgb(98, 107, 124);
+      border: solid 1px rgb(197 215 243);
+      color: #fff;
+    }
+    
+    #export-format:hover {
+      background-color: rgb(121 133 154);
+    }
+
+    /* Dropdown content styling */
+    .dropdown-content-emoji {
+      display: none;
+      position: fixed;
+      /* Change from absolute to fixed for better positioning */
+      top: 80px;
+      /* Adjust as needed */
+      right: 150px;
+      /* Adjust as needed */
+      background: rgb(221, 228, 235);
+      border: 1px solid rgb(151, 162, 173);
+      border-radius: 8px;
+      width: 184px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+      z-index: 1001;
+      /* Ensure it's above other elements */
+      padding: 10px 8px;
+      margin-top: 8px;
+    }
+
+    .dropdown-content-shape {
+      display: none;
+      position: fixed;
+      /* Change from absolute to fixed for better positioning */
+      top: 80px;
+      /* Adjust as needed */
+      right: 110px;
+      /* Adjust as needed */
+      background: rgb(221, 228, 235);
+      border: 1px solid rgb(151, 162, 173);
+      border-radius: 8px;
+      width: 184px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+      z-index: 1001;
+      /* Ensure it's above other elements */
+      padding: 10px 8px;
+      margin-top: 8px;
+    }
+
+    .dropdown-content-emoji.visible {
+      display: block !important;
+    }
+
+    .dropdown-content-shape.visible {
+      display: block !important;
+    }
+
+    .emoji-list,
+    .shape-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-start;
+    }
+
+    /* Make dropdown items more visible and clickable */
+    .emoji-btn,
+    .shape-btn {
+      color: #000;
+      border: none;
+      border-radius: 6px;
+      font-size: 22px;
+      padding: 8px 12px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+      margin: 0;
+      width: 50px;
+      height: 50px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .emoji-btn:hover,
+    .shape-btn:hover {
+      background: #3a4a5a;
+    }
+
+    /* Suggested styles for AI style buttons */
+    .ai-style-btn {
+      background: #f3f3fa;
+      border: 1px solid #a1a1e6;
+      color: #5a4fcf;
+      border-radius: 16px;
+      padding: 4px 14px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s;
+    }
+
+    .ai-style-btn:hover {
+      background: #e0e7ff;
+      color: #2d2a6c;
+    }
+
+    .generation-tips{
+      color: #666;
+      font-size: 13px;
+      margin: 5px;
+      padding: 6px 2px;
+    }
+    .generation-tips p{
+      padding: 2px;
+    }
+
+    /* Responsive layout */
+    @media (max-width: 768px) {
+      body {
+        grid-template-columns: 1fr;
+        /* Full width for mobile */
+        grid-template-rows: auto 1fr;
+        grid-template-areas:
+          "main"
+          "sidebar";
+      }
+
+      .sidebar {
+        height: auto;
+        max-height: 30vh;
+        grid-row: 2;
+      }
+
+      .main-content {
+        grid-row: 1;
+        height: 70vh;
+      }
+
+      /* Toggle sidebar visibility */
+      .sidebar.hidden {
+        display: none;
+      }
+
+      body.sidebar-hidden {
+        grid-template-areas: "main";
+      }
+    }
+
+    /* Add these styles to fix sidebar and tab functionality */
+
+    /* Tab content styles */
+    .tab-content {
+      display: none;
+      /* Hide by default */
+      flex-grow: 1;
+      overflow-y: auto;
+    }
+
+    .tab-content.active {
+      display: block;
+      /* Show when active */
+    }
+
+    /* AI Images grid layout */
+    .ai-images-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      padding: 12px;
+    }
+
+    .ai-image-item {
+      aspect-ratio: 1;
+      cursor: pointer;
+      border-radius: 4px;
+      overflow: hidden;
+      border: 1px solid #e0e0e0;
+      transition: transform 0.2s, box-shadow 0.2s;
+      position: relative;
+    }
+
+    .ai-image-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .ai-image-download-btn {
+      position: absolute;
+      top: 1px;
+      right: 1px;
+      font-size: 14px;
+      background-color: rgb(7 199 0);
+      color: white;
+      width: 20px;
+      height: 20px;
+      border-radius: 10%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background-color 0.2s;
+      z-index: 5;
+    }
+
+    .ai-image-download-btn:hover {
+      background-color: rgb(85, 221, 80);
+    }
+
+    /* Add to your existing <style> section */
+    .tool-button.disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    #btn-zoom-reset span {
+      font-size: 12px;
+    }
+
+    /* Color palette styles */
+    .color-palette {
+      position: absolute;
+      bottom: 60px;
+      left: 20px;
+      background: #fff;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      padding: 10px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      z-index: 100;
+      max-height: 180px;
+    }
+
+    .color-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+
+    .color-btn {
+      width: 36px;
+      height: 36px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+
+    .color-btn:hover {
+      transform: scale(1.1);
+    }
+
+    .custom-color {
+      display: flex;
+      align-items: center;
+      margin-top: 8px;
+    }
+
+    .custom-color input {
+      width: 100%;
+      max-width: 120px;
+      margin-right: 8px;
+    }
+
+    /* AI Image Generator Modal */
+    #ai-image-modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 2000;
+      justify-content: center;
+      align-items: center;
+    }
+
+    #ai-image-modal .modal-content {
+      background: white;
+      border-radius: 8px;
+      width: 400px;
+      padding: 20px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+
+    #ai-image-modal h2 {
+      margin-top: 0;
+      color: #333;
+      font-weight: 800;
+      padding: 20px 5px;
+      font-size: 2.5rem;
+    }
+
+    #ai-image-modal input,
+    #ai-image-modal select {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      margin-bottom: 15px;
+    }
+
+    #ai-image-modal button {
+      flex: 1;
+      padding: 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #ai-image-modal #ai-generate-btn {
+      background-image: linear-gradient(to right, #8a57e9, #a7866b);
+      color: white; 
+      border-radius: 4px 0 0 4px;
+      padding: 5px;
+    } 
+
+    #ai-image-modal #ai-cancel-btn {
+      background: #e2e2e2;
+      color: #333;
+      font-weight: 700;
+      border-radius: 0 4px 4px 0;
+      border: solid 1px #ddd;
+    }
+
+    #ai-image-modal #ai-image-loading {
+      margin-top: 15px;
+      text-align: center;
+      display: none;
+    }
+
+    #ai-image-modal #ai-image-loading div {
+      display: inline-block;
+      width: 30px;
+      height: 30px;
+      border: 3px solid rgba(138, 87, 233, 0.3);
+      border-radius: 50%;
+      border-top-color: #8a57e9;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      100% {
+        transform: rotate(360deg);
+      }
+    }
+
+    #ai-image-results {
+      margin-top: 15px;
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Layers Sidebar -->
+  <div class="sidebar" id="layers-panel">
+    <div class="tab-header">
+      <button class="tab-button" data-tab="ai-images">AI Image</button>
+      <button class="tab-button active" data-tab="layers">Layers</button>
+    </div>
+
+    <!-- AI Images Tab Content -->
+    <div class="tab-content" id="ai-images-content" style="display: none">
+      <div id="ai-image-sidepanel">
+        <div id="ai-image-sidepanel-list" class="ai-images-grid">
+          <!-- Generated images will be added here -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Layers Tab Content -->
+    <div class="tab-content active" id="layers-content">
+      <div class="layers-container" id="layers-list">
+        <div class="layer-item active">
+          <span>All Layers</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="main-content">
+    <!-- Top Bar -->
+    <div class="top-bar">
+      <input type="text" class="title-input" placeholder="Add Title" />
+      <div style="display: flex; align-items: center; gap: 2px">
+        <div class="frame-size">
+          <label>Frame Size</label>
+          <div class="dropdown">
+            <select id="frame-size-select">
+              <option value="800,600">800 × 600</option>
+              <option value="1024,768">1024 × 768</option>
+              <option value="1280,720">1280 × 720 (HD)</option>
+              <option value="1920,1080">1920 × 1080 (Full HD)</option>
+              <option value="400,400">400 × 400 (Square)</option>
+            </select>
+          </div>
+        </div>
+        <div class="action-buttons">
+          <button class="action-button" id="upload-image-btn">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+              <path fill="currentColor"
+                d="M5 21q-.825 0-1.412-.587T3 19V5q0-.825.588-1.412T5 3h14q.825 0 1.413.588T21 5v14q0 .825-.587 1.413T19 21zm0-2h14V5H5zm0 0V5zm2-2h10q.3 0 .45-.275t-.05-.525l-2.75-3.675q-.15-.2-.4-.2t-.4.2L11.25 16L9.4 13.525q-.15-.2-.4-.2t-.4.2l-2 2.675q-.2.25-.05.525T7 17m1.5-7q.625 0 1.063-.438T10 8.5t-.437-1.062T8.5 7t-1.062.438T7 8.5t.438 1.063T8.5 10" />
+            </svg>
+            Upload Image
+          </button>
+          <button class="action-button" id="image-generator-btn">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+              <path fill="currentColor"
+                d="M6 17h12l-3.075-4.1q-.275-.05-.562-.125T13.8 12.6L11.25 16L9 13zm-1 4q-.825 0-1.412-.587T3 19V5q0-.825.588-1.412T5 3h5v2H5v14h14v-5.325l2 2V19q0 .825-.587 1.413T19 21zm16.55-7.6l-3.1-3.1q-.525.35-1.125.525T16.05 11q-1.85 0-3.15-1.312T11.6 6.5t1.313-3.187T16.1 2t3.188 1.313T20.6 6.5q0 .675-.2 1.3t-.5 1.15L22.95 12zM16.1 9q1.05 0 1.775-.725T18.6 6.5t-.725-1.775T16.1 4t-1.775.725T13.6 6.5t.725 1.775T16.1 9" />
+            </svg>
+            Image Generator
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toolbar 1 -->
+    <div class="toolbar">
+      <div class="toolbar-group">
+        <div class="dropdown">
+          <select id="font-select" title="Font Family">
+            <option value="Arial, sans-serif">Arial</option>
+            <option value="'Times New Roman', serif">Times New Roman</option>
+            <option value="'Courier New', monospace">Courier New</option>
+            <option value="Georgia, serif">Georgia</option>
+            <option value="Verdana, sans-serif">Verdana</option>
+            <option value="Impact, sans-serif">Impact</option>
+            <option value="'Comic Sans MS', cursive">Comic Sans MS</option>
+            <option value="'Trebuchet MS', sans-serif">Trebuchet MS</option>
+            <option value="'Lucida Console', monaco, monospace">
+              Lucida Console
+            </option>
+            <option value="'Palatino Linotype', 'Book Antiqua', Palatino, serif">
+              Palatino
+            </option>
+          </select>
+        </div>
+      </div>
+
+      <div class="toolbar-group">
+        <button class="tool-button" id="btn-selection" title="Selection Tool">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+            <rect width="24" height="24" fill="none" />
+            <path fill="currentColor"
+              d="M13 14.4V20q0 .425-.288.713T12 21t-.712-.288T11 20v-8q0-.425.288-.712T12 11h8q.425 0 .713.288T21 12t-.288.713T20 13h-5.6l6.3 6.3q.275.275.275.7t-.275.7t-.7.275t-.7-.275zM4 5q-.425 0-.712-.288T3 4t.288-.712T4 3t.713.288T5 4t-.288.713T4 5m4 0q-.425 0-.712-.288T7 4t.288-.712T8 3t.713.288T9 4t-.288.713T8 5m4 0q-.425 0-.712-.288T11 4t.288-.712T12 3t.713.288T13 4t-.288.713T12 5m4 0q-.425 0-.712-.288T15 4t.288-.712T16 3t.713.288T17 4t-.288.713T16 5m4 0q-.425 0-.712-.288T19 4t.288-.712T20 3t.713.288T21 4t-.288.713T20 5M8 21q-.425 0-.712-.288T7 20t.288-.712T8 19t.713.288T9 20t-.288.713T8 21M4 9q-.425 0-.712-.288T3 8t.288-.712T4 7t.713.288T5 8t-.288.713T4 9m0 4q-.425 0-.712-.288T3 12t.288-.712T4 11t.713.288T5 12t-.288.713T4 13m0 4q-.425 0-.712-.288T3 16t.288-.712T4 15t.713.288T5 16t-.288.713T4 17m0 4q-.425 0-.712-.288T3 20t.288-.712T4 19t.713.288T5 20t-.288.713T4 21M20 9q-.425 0-.712-.288T19 8t.288-.712T20 7t.713.288T21 8t-.288.713T20 9" />
+          </svg>
+        </button>
+        <div class="dropdown">
+          <select id="font-size" title="Font Size">
+            <option>20px</option>
+            <option>30px</option>
+            <option>40px</option>
+            <option>50px</option>
+          </select>
+        </div>
+        <button class="tool-button" id="btn-text-color" title="Text Color">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+            <path fill="currentColor"
+              d="M3 24q-.425 0-.712-.288T2 23v-2q0-.425.288-.712T3 20h18q.425 0 .713.288T22 21v2q0 .425-.288.713T21 24zm4.125-7q-.575 0-.913-.488t-.137-1.037l4.4-11.725q.125-.35.425-.55t.65-.2h.9q.375 0 .663.2t.412.55L17.95 15.5q.2.55-.137 1.025T16.9 17q-.35 0-.65-.2t-.425-.55l-.975-2.85H9.2l-1.025 2.875q-.125.35-.413.538T7.126 17M9.9 11.4h4.2l-2.05-5.8h-.1z" />
+          </svg>
+        </button>
+        <button class="tool-button" id="btn-bold" title="Bold">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+            <rect width="24" height="24" fill="none" />
+            <path fill="currentColor"
+              d="M6.8 19V5h5.525q1.625 0 3 1T16.7 8.775q0 1.275-.575 1.963t-1.075.987q.625.275 1.388 1.025T17.2 15q0 2.225-1.625 3.113t-3.05.887zm3.025-2.8h2.6q1.2 0 1.463-.612t.262-.888t-.262-.887t-1.538-.613H9.825zm0-5.7h2.325q.825 0 1.2-.425t.375-.95q0-.6-.425-.975t-1.1-.375H9.825z" />
+          </svg>
+        </button>
+        <button class="tool-button" id="btn-italic" title="Italic">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+            <rect width="24" height="24" fill="none" />
+            <path fill="currentColor" d="M5 19v-2.5h4l3-9H8V5h10v2.5h-3.5l-3 9H15V19z" />
+          </svg>
+        </button>
+        <button class="tool-button" id="btn-underline" title="Underline">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+            <rect width="24" height="24" fill="none" />
+            <path fill="currentColor"
+              d="M5 21v-2h14v2zm7-4q-2.525 0-3.925-1.575t-1.4-4.175V3H9.25v8.4q0 1.4.7 2.275t2.05.875t2.05-.875t.7-2.275V3h2.575v8.25q0 2.6-1.4 4.175T12 17" />
+          </svg>
+        </button>
+        <button class="tool-button" id="btn-addtext" title="Add Text">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+            <rect width="24" height="24" fill="none" />
+            <path fill="currentColor"
+              d="M11 16v-6H8V8h8v2h-3v6zM1 23v-6h2V7H1V1h6v2h10V1h6v6h-2v10h2v6h-6v-2H7v2zm6-4h10v-2h2V7h-2V5H7v2H5v10h2zM3 5h2V3H3zm16 0h2V3h-2zm0 16h2v-2h-2zM3 21h2v-2H3zm2-2" />
+          </svg>
+        </button>
+        <button class="tool-button" id="btn-superscript" title="Superscript">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+            <path fill="currentColor"
+              d="M19 9V7q0-.425.288-.712T20 6h2V5h-3V4h3q.425 0 .713.288T23 5v1q0 .425-.288.713T22 7h-2v1h3v1zM5.875 20l4.625-7.275L6.2 6h2.65l3.1 5h.1l3.075-5H17.8l-4.325 6.725L18.125 20H15.45l-3.4-5.425h-.1L8.55 20z" />
+          </svg>
+        </button>
+        <button class="tool-button" id="btn-subscript" title="Subscript">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+            <path fill="currentColor"
+              d="M19 20v-2q0-.425.288-.712T20 17h2v-1h-3v-1h3q.425 0 .713.288T23 16v1q0 .425-.288.713T22 18h-2v1h3v1zM5.875 18l4.625-7.275L6.2 4h2.65l3.1 5h.1l3.075-5H17.8l-4.325 6.725L18.125 18H15.45l-3.4-5.425h-.1L8.55 18z" />
+          </svg>
+        </button>
+        <button class="tool-button" id="btn-delete" title="Delete Selected">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+            <path fill="currentColor"
+              d="m9.4 16.5l2.6-2.6l2.6 2.6l1.4-1.4l-2.6-2.6L16 9.9l-1.4-1.4l-2.6 2.6l-2.6-2.6L8 9.9l2.6 2.6L8 15.1zM7 21q-.825 0-1.412-.587T5 19V6H4V4h5V3h6v1h5v2h-1v13q0 .825-.587 1.413T17 21zM17 6H7v13h10zM7 6v13z" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="toolbar-group">
+        <button class="tool-button" id="btn-draw" title="Drawing Tool">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+            <path fill="currentColor"
+              d="M4 21v-4.25L17.175 3.6q.3-.3.675-.45T18.6 3q.4 0 .763.15T20 3.6L21.4 5q.3.275.45.638T22 6.4q0 .375-.15.75t-.45.675L8.25 21zm2-2h1.4l9.825-9.8l-.7-.725l-.725-.7L6 17.6zM20 6.425L18.575 5zm-3.475 2.05l-.725-.7L17.225 9.2zM14 21q1.85 0 3.425-.925T19 17.5q0-.9-.475-1.55t-1.275-1.125L15.775 16.3q.575.25.9.55t.325.65q0 .575-.913 1.038T14 19q-.425 0-.712.288T13 20t.288.713T14 21m-9.425-7.65l1.5-1.5q-.5-.2-.788-.412T5 11q0-.3.45-.6t1.9-.925q2.2-.95 2.925-1.725T11 6q0-1.375-1.1-2.187T7 3q-1.125 0-2.013.4t-1.362.975Q3.35 4.7 3.4 5.1t.375.65q.325.275.725.225t.675-.325q.35-.35.775-.5T7 5q1.025 0 1.513.3T9 6q0 .35-.437.637T6.55 7.65q-2 .875-2.775 1.588T3 11q0 .8.425 1.363t1.15.987" />
+          </svg>
+        </button>
+        <button class="tool-button" id="btn-draw-color" title="Drawing Color">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+            <path fill="currentColor"
+              d="M3 20v-2.925q0-.4.15-.763t.425-.637L11.95 7.3L10.5 5.9l1.45-1.4l1.9 1.9l3.1-3.1q.125-.125.313-.2t.387-.075t.375.075t.325.2l2.35 2.35q.125.15.2.325t.075.375t-.075.388t-.2.312l-3.075 3.075l1.9 1.95L18.1 13.5l-1.4-1.45l-8.375 8.375q-.275.275-.638.425t-.762.15H4q-.425 0-.712-.288T3 20m2-1h1.95l8.3-8.35l-1.9-1.9L5 17.05z" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="toolbar-group">
+        <button class="tool-button" id="btn-align-left" title="Align Left">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+            <path fill="currentColor"
+              d="M4 21q-.425 0-.712-.288T3 20t.288-.712T4 19h16q.425 0 .713.288T21 20t-.288.713T20 21zm0-4q-.425 0-.712-.288T3 16t.288-.712T4 15h10q.425 0 .713.288T15 16t-.288.713T14 17zm0-4q-.425 0-.712-.288T3 12t.288-.712T4 11h16q.425 0 .713.288T21 12t-.288.713T20 13zm0-4q-.425 0-.712-.288T3 8t.288-.712T4 7h10q.425 0 .713.288T15 8t-.288.713T14 9zm0-4q-.425 0-.712-.288T3 4t.288-.712T4 3h16q.425 0 .713.288T21 4t-.288.713T20 5z" />
+          </svg>
+        </button>
+        <button class="tool-button" id="btn-align-center" title="Align Center">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+            <path fill="currentColor"
+              d="M4 21q-.425 0-.712-.288T3 20t.288-.712T4 19h16q.425 0 .713.288T21 20t-.288.713T20 21zm4-4q-.425 0-.712-.288T7 16t.288-.712T8 15h8q.425 0 .713.288T17 16t-.288.713T16 17zm-4-4q-.425 0-.712-.288T3 12t.288-.712T4 11h16q.425 0 .713.288T21 12t-.288.713T20 13zm4-4q-.425 0-.712-.288T7 8t.288-.712T8 7h8q.425 0 .713.288T17 8t-.288.713T16 9zM4 5q-.425 0-.712-.288T3 4t.288-.712T4 3h16q.425 0 .713.288T21 4t-.288.713T20 5z" />
+          </svg>
+        </button>
+        <button class="tool-button" id="btn-align-right" title="Align Right">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+            <path fill="currentColor"
+              d="M4 5q-.425 0-.712-.288T3 4t.288-.712T4 3h16q.425 0 .713.288T21 4t-.288.713T20 5zm6 4q-.425 0-.712-.288T9 8t.288-.712T10 7h10q.425 0 .713.288T21 8t-.288.713T20 9zm-6 4q-.425 0-.712-.288T3 12t.288-.712T4 11h16q.425 0 .713.288T21 12t-.288.713T20 13zm6 4q-.425 0-.712-.288T9 16t.288-.712T10 15h10q.425 0 .713.288T21 16t-.288.713T20 17zm-6 4q-.425 0-.712-.288T3 20t.288-.712T4 19h16q.425 0 .713.288T21 20t-.288.713T20 21z" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="toolbar-group">
+        <button class="tool-button" id="btn-linespacing" title="Line Spacing">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+            <path fill="currentColor"
+              d="m5 7.85l-.9.875Q3.825 9 3.413 9T2.7 8.7q-.275-.275-.275-.7t.275-.7l2.6-2.6q.15-.15.325-.212T6 4.425t.375.063t.325.212l2.6 2.6q.275.275.288.688T9.3 8.7q-.275.275-.687.288T7.9 8.725L7 7.85v8.3l.9-.875Q8.175 15 8.588 15t.712.3q.275.275.275.7t-.275.7l-2.6 2.6q-.15.15-.325.213T6 19.575t-.375-.062T5.3 19.3l-2.6-2.6q-.275-.275-.288-.687T2.7 15.3q.275-.275.688-.288t.712.263l.9.875zM13 19q-.425 0-.712-.288T12 18t.288-.712T13 17h8q.425 0 .713.288T22 18t-.288.713T21 19zm0-6q-.425 0-.712-.288T12 12t.288-.712T13 11h8q.425 0 .713.288T22 12t-.288.713T21 13zm0-6q-.425 0-.712-.288T12 6t.288-.712T13 5h8q.425 0 .713.288T22 6t-.288.713T21 7z" />
+          </svg>
+        </button>
+        <button class="tool-button" id="btn-character-spacing" title="Character Spacing">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+            <path fill="currentColor"
+              d="m7.825 19l.9.9q.275.275.275.688t-.3.712q-.275.275-.7.275t-.7-.275l-2.6-2.6q-.3-.3-.3-.7t.3-.7l2.6-2.6q.275-.275.688-.275t.712.275q.3.3.3.713t-.3.712L7.825 17h8.35l-.9-.9Q15 15.825 15 15.413t.3-.713q.275-.275.7-.275t.7.275l2.6 2.6q.3.3.3.7t-.3.7l-2.6 2.6q-.275.275-.687.275T15.3 21.3q-.3-.3-.3-.712t.3-.713l.875-.875zM6 12q-.425 0-.712-.288T5 11V3q0-.425.288-.712T6 2t.713.288T7 3v8q0 .425-.288.713T6 12m6 0q-.425 0-.712-.288T11 11V3q0-.425.288-.712T12 2t.713.288T13 3v8q0 .425-.288.713T12 12m6 0q-.425 0-.712-.288T17 11V3q0-.425.288-.712T18 2t.713.288T19 3v8q0 .425-.288.713T18 12" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="toolbar-group">
+        <!-- Emoji Dropdown -->
+        <div class="dropdown" id="emoji-dropdown">
+          <button class="tool-button" id="emoji-dropdown-btn" title="Add Emoji">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M15.5 23q-2.6 0-4.587-1.55T8.275 17.5q1.125.05 2.225-.225t2.1-.775h4.1q.025-.275.038-.537t.012-.538q0-.225-.012-.462T16.7 14.5h-1.475q.4-.45.738-.95t.612-1.05H20.1q-.5-.75-1.2-1.312t-1.575-.863q.125-.5.163-1.025t.012-1.025q2.4.65 3.95 2.638T23 15.5q0 3.125-2.187 5.313T15.5 23m-2.375-2.55q-.175-.5-.312-.975t-.238-.975H10.9q.425.625.987 1.125t1.238.825m2.375.35q.3-.55.513-1.125t.362-1.175h-1.75q.15.6.375 1.175t.5 1.125m2.375-.35q.675-.325 1.238-.825T20.1 18.5h-1.675q-.125.5-.25.975t-.3.975m.825-3.95h2.2q.05-.25.075-.488T21 15.5t-.025-.513t-.075-.487h-2.2q.025.225.038.463t.012.462q0 .275-.012.538t-.038.537M8.5 16q-3.125 0-5.313-2.187T1 8.5t2.188-5.312T8.5 1t5.313 2.188T16 8.5t-2.187 5.313T8.5 16m0-2q2.275 0 3.888-1.612T14 8.5t-1.612-3.887T8.5 3T4.613 4.613T3 8.5t1.613 3.888T8.5 14M6 8q.425 0 .713-.288T7 7t-.288-.712T6 6t-.712.288T5 7t.288.713T6 8m2.5 4.4q1.2 0 2.138-.675T12 10H5q.425 1.05 1.363 1.725T8.5 12.4M11 8q.425 0 .713-.288T12 7t-.288-.712T11 6t-.712.288T10 7t.288.713T11 8m-2.5.5"/></svg>
+          </button>
+          <div class="dropdown-content-emoji">
+            <div class="emoji-list">
+              <button class="emoji-btn">😊</button>
+              <button class="emoji-btn">😂</button>
+              <button class="emoji-btn">❤️</button>
+              <button class="emoji-btn">👍</button>
+              <button class="emoji-btn">🎉</button>
+              <button class="emoji-btn">🔥</button>
+              <button class="emoji-btn">⭐</button>
+              <button class="emoji-btn">🚀</button>
+              <!-- Add more emoji buttons as needed -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Shape Dropdown -->
+        <div class="dropdown" id="shape-dropdown">
+          <button class="tool-button" id="shape-dropdown-btn" title="Add Shape">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+              <path fill="currentColor"
+                d="M10 22q-.825 0-1.412-.587T8 20v-1q0-.425.288-.712T9 18t.713.288T10 19v1h10V10h-1q-.425 0-.712-.288T18 9t.288-.712T19 8h1q.825 0 1.413.588T22 10v10q0 .825-.587 1.413T20 22zm-1-6q-2.925 0-4.962-2.037T2 9t2.038-4.962T9 2t4.963 2.038T16 9t-2.037 4.963T9 16m0-2q2.075 0 3.538-1.463T14 9t-1.463-3.537T9 4T5.463 5.463T4 9t1.463 3.538T9 14m0-5" />
+            </svg>
+          </button>
+          <div class="dropdown-content-shape">
+            <div class="shape-list">
+              <button class="shape-btn" data-shape="rect" title="Rectangle">□</button>
+              <button class="shape-btn" data-shape="diamond" title="Diamond">◇</button>
+              <button class="shape-btn" data-shape="small-square" title="Small Square">▫</button>
+              <button class="shape-btn" data-shape="big-square" title="Big Square">▭</button>
+              <button class="shape-btn" data-shape="circle" title="Circle">○</button>
+              <button class="shape-btn" data-shape="triangle" title="Triangle">△</button>
+              <button class="shape-btn" data-shape="line" title="Line">━</button>
+              <button class="shape-btn" data-shape="polygon" title="Polygon">⬡</button>
+              <button class="shape-btn" data-shape="hollow-star" title="Star">☆</button>
+              <button class="shape-btn" data-shape="hollow-heart" title="Heart">♡</button>
+              <button class="shape-btn" data-shape="hollow-arrow" title="Arrow">⇨</button>
+              <button class="shape-btn" data-shape="arrow" title="Arrow">→</button>
+              <button class="shape-btn" data-shape="hollow-circle-small" title="Small Circle">◌</button>
+              <button class="shape-btn" data-shape="hollow-cross" title="Cross">✝</button>
+              <button class="shape-btn" data-shape="hollow-check" title="Check">☐</button>
+            </div>
+          </div>
+        </div>
+        <button class="tool-button" id="btn-background-fill" title="Background Fill">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+            <path fill="currentColor"
+              d="m8.3.7l7.875 7.875q.575.575.575 1.425t-.575 1.425l-4.75 4.75q-.575.575-1.425.575t-1.425-.575l-4.75-4.75Q3.25 10.85 3.25 10t.575-1.425L8.575 3.8l-1.7-1.7q-.3-.3-.288-.7T6.9.7q.3-.275.7-.287T8.3.7M10 5.225L5.225 10h9.55zM19 17q-.825 0-1.412-.587T17 15q0-.525.313-1.125T18 12.75q.225-.3.475-.625T19 11.5q.275.3.525.625t.475.625q.375.525.688 1.125T21 15q0 .825-.587 1.413T19 17M4 24q-.825 0-1.412-.587T2 22t.588-1.412T4 20h16q.825 0 1.413.588T22 22t-.587 1.413T20 24z" />
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Toolbar 2 -->
+    <div class="toolbar">
+      <div class="toolbar-group">
+        <div class="dropdown">
+          <select id="shadow-blur" title="Shadow Effect">
+            <option value="">Shadow</option>
+            <option value="">None</option>
+            <option value="0">No Blur</option>
+            <option value="3">Light</option>
+            <option value="6">Medium</option>
+            <option value="10">Heavy</option>
+          </select>
+        </div>
+        <button class="tool-button" id="btn-shadow-color" title="Shadow Color">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+            <path fill="currentColor"
+              d="M4 22q-.825 0-1.412-.587T2 20V8q0-.825.588-1.412T4 6h2V4q0-.825.588-1.412T8 2h12q.825 0 1.413.588T22 4v12q0 .825-.587 1.413T20 18h-2v2q0 .825-.587 1.413T16 22zm4-6h12V4H8z" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="toolbar-group">
+        <label>Border</label>
+        <input type="number" id="border-width" class="border-input" min="0" max="20" value="1" title="Border Width"
+          style="width: 40px" />
+        <button class="tool-button" id="btn-border-color" title="Border Color">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+            <path fill="currentColor" d="M3 21V3h18v18zm2-2h14V5H5zm0 0V5z" />
+          </svg>
+        </button>
+
+        <div class="dropdown">
+          <select id="stroke-style" title="Border Style">
+            <option>Stroke</option>
+            <option>Solid</option>
+            <option>Dashed</option>
+            <option>Dotted</option>
+          </select>
+        </div>
+      </div>
+
+      <button class="tool-button" id="btn-crop-tool" title="Crop Tool">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+          <path fill="currentColor"
+            d="M17 22v-3H7q-.825 0-1.412-.587T5 17V7H2q-.425 0-.712-.288T1 6t.288-.712T2 5h3V2q0-.425.288-.712T6 1t.713.288T7 2v15h15q.425 0 .713.288T23 18t-.288.713T22 19h-3v3q0 .425-.288.713T18 23t-.712-.288T17 22m0-7V7H9V5h8q.825 0 1.413.588T19 7v8z" />
+        </svg>
+      </button>
+
+      <button class="tool-button" id="btn-undo" title="Undo">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+          <path fill="currentColor"
+            d="M8 19q-.425 0-.712-.288T7 18t.288-.712T8 17h6.1q1.575 0 2.738-1T18 13.5T16.838 11T14.1 10H7.8l1.9 1.9q.275.275.275.7t-.275.7t-.7.275t-.7-.275L4.7 9.7q-.15-.15-.213-.325T4.426 9t.063-.375T4.7 8.3l3.6-3.6q.275-.275.7-.275t.7.275t.275.7t-.275.7L7.8 8h6.3q2.425 0 4.163 1.575T20 13.5t-1.737 3.925T14.1 19z" />
+        </svg>
+      </button>
+      <button class="tool-button" id="btn-redo" title="Redo">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+          <path fill="currentColor"
+            d="M16.2 10H9.9q-1.575 0-2.738 1T6 13.5T7.163 16T9.9 17H16q.425 0 .713.288T17 18t-.288.713T16 19H9.9q-2.425 0-4.163-1.575T4 13.5t1.738-3.925T9.9 8h6.3l-1.9-1.9q-.275-.275-.275-.7t.275-.7t.7-.275t.7.275l3.6 3.6q.15.15.213.325t.062.375t-.062.375t-.213.325l-3.6 3.6q-.275.275-.7.275t-.7-.275t-.275-.7t.275-.7z" />
+        </svg>
+      </button>
+      <div class="toolbar-group">
+        <button class="tool-button" id="btn-zoom-in" title="Zoom In">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+            <path fill="currentColor"
+              d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14zm2.5-4h-2v2H9v-2H7V9h2V7h1v2h2v1z" />
+          </svg>
+        </button>
+        <button class="tool-button" id="btn-zoom-out" title="Zoom Out">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+            <path fill="currentColor"
+              d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14zM7 9h5v1H7z" />
+          </svg>
+        </button>
+        <button class="tool-button" id="btn-zoom-reset" title="Reset Zoom">
+          <span>100%</span>
+        </button>
+      </div>
+      <div class="toolbar-group">
+        <button class="tool-button" id="btn-rotate" title="Rotate">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+            <path fill="currentColor"
+              d="M11 22q-3.75 0-6.375-2.625T2 13t2.638-6.375T11.025 4h.175l-.9-.9q-.275-.275-.275-.7t.275-.7t.7-.275t.7.275l2.6 2.6q.125.125.2.313t.075.387t-.075.388t-.2.312l-2.6 2.6q-.275.275-.7.275t-.7-.275t-.275-.7t.275-.7l.9-.9h-.175Q8.1 6 6.05 8.038T4 13t2.038 4.963T11 20q.725 0 1.413-.137t1.337-.413q.375-.175.75-.012t.525.537t.025.763t-.5.537q-.85.35-1.737.538T11 22m5.3-3.7l-4.6-4.6q-.15-.15-.212-.325T11.425 13t.063-.375t.212-.325l4.6-4.6q.15-.15.325-.212T17 7.425t.375.063t.325.212l4.6 4.6q.15.15.213.325t.062.375t-.062.375t-.213.325l-4.6 4.6q-.15.15-.325.213t-.375.062t-.375-.062t-.325-.213" />
+          </svg>
+        </button>
+        <div class="dropdown">
+          <select id="group-options" title="Group Options">
+            <option>Group</option>
+            <option>Group Selected</option>
+            <option>Ungroup</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Canvas Area -->
+    <div class="canvas-container">
+      <canvas id="editor-canvas" class="editor-canvas"></canvas>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <div class="action-buttons-footer">
+        <div class="export-controls">
+          <button class="download-button" id="btn-download">Download</button>
+          <div class="dropdown">
+            <select id="export-format">
+              <option value="png">PNG</option>
+              <option value="jpg">JPG</option>
+              <option value="jpeg">JPEG</option>
+              <option value="svg">SVG</option>
+              <option value="pdf">PDF</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="color-palette" class="color-palette" style="display: none">
+    <div class="color-grid">
+      <button class="
+          class=" color-btn" data-color="#FFFFFF" style="background-color: #ffffff"></button>
+      <button class="color-btn" data-color="#FF0000" style="background-color: #ff0000"></button>
+      <button class="color-btn" data-color="#00FF00" style="background-color: #00ff00"></button>
+      <button class="color-btn" data-color="#0000FF" style="background-color: #0000ff"></button>
+      <button class="color-btn" data-color="#FFFF00" style="background-color: #ffff00"></button>
+      <button class="color-btn" data-color="#FF00FF" style="background-color: #ff00ff"></button>
+      <button class="color-btn" data-color="#00FFFF" style="background-color: #00ffff"></button>
+      <button class="color-btn" data-color="#FFA500" style="background-color: #ffa500"></button>
+      <button class="color-btn" data-color="#800080" style="background-color: #800080"></button>
+      <button class="color-btn" data-color="#008000" style="background-color: #008000"></button>
+      <button class="color-btn" data-color="#800000" style="background-color: #800000"></button>
+    </div>
+    <div class="custom-color">
+      <input type="color" id="custom-color-input" value="#000000" />
+      <label for="custom-color-input">Custom</label>
+    </div>
+  </div>
+
+  <!-- AI Image Generator Modal -->
+  <div id="ai-image-modal"
+    style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 2000; justify-content: center; align-items: center;">
+    <div
+      style="background: #f8f5f1; border-radius: 8px; width: 450px; padding: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+      <h2 style="margin-top: 0;">AI GENERATOR</h2>
+
+      <div style="margin-bottom: 15px;">
+        <input id="ai-keywords" type="text" placeholder="Add Prompt or Keywords (Comma Separated)"
+          style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+        <!-- Art style suggestion -->
+        <div id="ai-style-suggestions-container" style="display: flex; align-items: center; gap: 8px; margin: 8px 0 0 0;">
+          <div id="ai-style-suggestions" style="display: flex; flex-wrap: wrap; gap: 6px;"></div>
+          <button id="ai-style-refresh-btn" type="button" title="Refresh Styles" style="background: #f3f3fa; border: 1px solid #bdbdfc; color: #5a4fcf; border-radius: 16px; padding: 4px 10px; font-size: 13px; cursor: pointer; height: 32px; display: flex; align-items: center;">
+            &#x21bb;
+          </button>
+        </div>
+        <!-- Instructions -->
+        <div class="generation-tips">
+          <p>Enter a description or keywords for your image.</p>
+          <p><b>Tip:</b> Click a style above to add it to your prompt for different art effects.</p>
+        </div>
+      </div>
+
+      <div style="margin-bottom: 15px;">
+        <select id="ai-size" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+          <option value="1024x1024">Square (1024x1024)</option>
+          <option value="1024x1792">Portrait (1024x1792)</option>
+          <option value="1792x1024">Landscape (1792x1024)</option>
+        </select>
+      </div>
+
+      <div style="margin-bottom: 15px;">
+        <input id="ai-num-images" type="number" placeholder="Number Of Images" value="1" min="1" max="2"
+          style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+      </div>
+
+      <div style="display: flex;">
+        <button id="ai-generate-btn"
+          style="flex: 1; padding: 10px; color: white; border: none; border-radius: 4px 0 0 4px; cursor: pointer; display: flex; align-items: center; justify-content: center;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M9.8 21.75q-3.425-.775-5.613-3.5T2 12t2.188-6.25T9.8 2.25q.475-.125.838.175t.362.8q0 .35-.2.625t-.55.35Q7.5 4.825 5.75 7T4 12t1.75 5t4.5 2.8q.35.075.55.35t.2.625q0 .5-.362.8t-.838.175m4.4 0q-.475.125-.837-.175t-.363-.8q0-.35.2-.625t.55-.35q.675-.15 1.313-.413t1.212-.637q.275-.2.613-.15t.587.3q.35.35.3.813t-.45.737q-.725.45-1.513.775t-1.612.525m4.7-4.25q-.25-.25-.3-.587t.15-.613q.375-.575.638-1.225t.412-1.325q.075-.35.35-.537t.625-.188q.5 0 .8.363t.175.837q-.2.825-.525 1.613t-.775 1.512q-.275.4-.737.45t-.813-.3m1.875-6.5q-.35 0-.625-.2t-.35-.55q-.15-.675-.413-1.312t-.637-1.213q-.2-.3-.15-.637t.3-.588q.35-.35.813-.3t.737.475q.45.725.775 1.513T21.75 9.8q.125.475-.175.838t-.8.362m-4.5-5.75q-.575-.375-1.212-.638T13.75 4.2q-.35-.075-.55-.35t-.2-.625q0-.5.363-.8t.837-.175q.825.2 1.613.525t1.512.775q.425.275.475.738t-.3.812q-.25.25-.587.3t-.638-.15m-3.3 7.875l1.85-1.85q.3-.3.725-.3t.725.3t.288.725t-.313.725L12.675 16.3q-.275.275-.7.275t-.7-.275L7.65 12.65q-.3-.3-.288-.712t.313-.713t.713-.3t.712.3l1.875 1.9V8q0-.425.288-.712T11.975 7t.713.288t.287.712z"/></svg>
+          AI IMAGE GENERATE
+        </button>
+        <button id="ai-cancel-btn"
+          style="flex: 1; padding: 10px; background: #e2e2e2; color: #333; border-radius: 0 4px 4px 0; cursor: pointer;">
+          CANCEL
+        </button>
+      </div>
+
+      <div id="ai-image-loading" style="margin-top: 15px; text-align: center; display: none;">
+        <div
+          style="display: inline-block; width: 30px; height: 30px; border: 3px solid rgba(138, 87, 233, 0.3); border-radius: 50%; border-top-color: #8a57e9; animation: spin 1s linear infinite;">
+        </div>
+        <style>
+          @keyframes spin {
+            100% {
+              transform: rotate(360deg);
+            }
+          }
+        </style>
+      </div>
+
+      <div id="ai-image-results" style="margin-top: 15px;"></div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+  <script src="../static/js/script.js"></script>
+</body>
+
+</html>
